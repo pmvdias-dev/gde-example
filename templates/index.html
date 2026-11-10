@@ -67,8 +67,22 @@
     }
 
     // ---------- Thread ----------
+    const ROBOT = `
+      <svg class="robot" viewBox="0 0 120 140" width="120" height="140" role="img" aria-label="Friendly robot waving">
+        <line x1="60" y1="14" x2="60" y2="30" stroke="#0d0d0d" stroke-width="3" stroke-linecap="round"/>
+        <circle class="r-antenna" cx="60" cy="10" r="6" fill="#4c8dff"/>
+        <rect x="26" y="30" width="68" height="52" rx="16" fill="#f4f4f4" stroke="#0d0d0d" stroke-width="3"/>
+        <ellipse class="r-eye" cx="45" cy="54" rx="6" ry="7" fill="#0d0d0d"/>
+        <ellipse class="r-eye" cx="75" cy="54" rx="6" ry="7" fill="#0d0d0d"/>
+        <path d="M48 69 Q60 77 72 69" fill="none" stroke="#0d0d0d" stroke-width="3" stroke-linecap="round"/>
+        <rect x="36" y="88" width="48" height="38" rx="12" fill="#f4f4f4" stroke="#0d0d0d" stroke-width="3"/>
+        <circle cx="60" cy="107" r="5" fill="#4c8dff"/>
+        <path d="M36 100 Q24 106 22 118" fill="none" stroke="#0d0d0d" stroke-width="3" stroke-linecap="round"/>
+        <path class="r-arm" d="M84 100 Q98 98 100 82" fill="none" stroke="#0d0d0d" stroke-width="3" stroke-linecap="round"/>
+      </svg>`;
+
     function showEmpty() {
-      messagesEl.innerHTML = '<div class="empty"><h1>What can I help with?</h1></div>';
+      messagesEl.innerHTML = '<div class="empty">' + ROBOT + '<h1>What can I help with?</h1></div>';
     }
 
     function addMessage(role, text) {

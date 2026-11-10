@@ -222,7 +222,23 @@ body {
 }
 
 .empty { margin: auto; text-align: center; }
-.empty h1 { font-size: 28px; font-weight: 600; margin: 0; }
+.empty h1 { font-size: 28px; font-weight: 600; margin: 8px 0 0; }
+
+/* ---------- Robot ---------- */
+.robot { display: block; margin: 0 auto; animation: robot-float 3s ease-in-out infinite; }
+.robot * { transform-box: fill-box; transform-origin: center; }
+.r-eye { animation: robot-blink 4s infinite; }
+.r-antenna { animation: robot-glow 1.6s ease-in-out infinite; }
+.r-arm { transform-origin: left bottom; animation: robot-wave 1.4s ease-in-out infinite; }
+
+@keyframes robot-float { 50% { transform: translateY(-8px); } }
+@keyframes robot-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes robot-glow { 50% { transform: scale(1.4); opacity: 0.5; } }
+@keyframes robot-wave { 50% { transform: rotate(-22deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .robot, .robot * { animation: none; }
+}
 
 .msg { display: flex; gap: 14px; }
 .msg.user { justify-content: flex-end; }

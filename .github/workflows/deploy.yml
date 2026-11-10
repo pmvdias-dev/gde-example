@@ -1,0 +1,75 @@
+name: Test and deploy
+
+# Every push to main: run the tests, then rebuild and restart the app on the EC2 instance.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once; a newer push waits for the running one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Bedrock is mocked in the tests, so no AWS credentials are needed here.
+      - run: python -m unittest test_app.py
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.EC2_HOST }}
+      SSH_USER: ${{ secrets.EC2_USER }}
+      HOST_PORT: ${{ vars.HOST_PORT || '80' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload source
+        run: |
+          tar czf - app.py requirements.txt Dockerfile templates static \
+            | ssh -i ~/.ssh/deploy_key "$SSH_USER@$HOST" \
+                'rm -rf ~/gde-app && mkdir ~/gde-app && tar xzf - -C ~/gde-app'
+
+      - name: Build and restart container
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$HOST" bash -se <<EOF
+          set -euo pipefail
+          cd ~/gde-app
+          docker build -t gde-chat .
+          docker rm -f gde-chat 2>/dev/null || true
+          # Named volume keeps chat.db and secret.key across deploys.
+          docker run -d --name gde-chat --restart unless-stopped \
+            -p ${HOST_PORT}:8000 -v gde-chat-data:/data gde-chat
+          docker image prune -f
+          EOF
+
+      - name: Health check
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$HOST" bash -se <<EOF
+          for i in \$(seq 1 20); do
+            [ "\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:${HOST_PORT}/login)" = 200 ] && exit 0
+            sleep 2
+          done
+          docker logs --tail 50 gde-chat
+          exit 1
+          EOF
