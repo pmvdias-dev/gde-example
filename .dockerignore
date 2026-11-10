@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.db
+secret.key
+.env*
+.aws/
+test_*.py

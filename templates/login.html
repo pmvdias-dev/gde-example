@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ "Sign up" if mode == "register" else "Log in" }} · Bedrock Chat</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <h1>{{ "Create an account" if mode == "register" else "Welcome back" }}</h1>
+    {% if error %}<p class="auth-error" role="alert">{{ error }}</p>{% endif %}
+    <form method="post" class="auth-form">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ email or '' }}" autocomplete="email"
+             required maxlength="254" autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required
+             autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}"
+             {% if mode == "register" %}minlength="8"{% endif %}>
+      <button type="submit" class="auth-submit">{{ "Sign up" if mode == "register" else "Log in" }}</button>
+    </form>
+    <p class="auth-switch">
+      {% if mode == "register" %}
+        Already have an account? <a href="{{ url_for('login') }}">Log in</a>
+      {% else %}
+        No account? <a href="{{ url_for('register') }}">Sign up</a>
+      {% endif %}
+    </p>
+  </main>
+</body>
+</html>

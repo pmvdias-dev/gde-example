@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bedrock Chat</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="layout">
+    <aside id="sidebar" class="sidebar" aria-label="Chat history">
+      <div class="sidebar-top">
+        <button id="new-chat" class="new-chat" type="button">
+          <span aria-hidden="true">＋</span> New chat
+        </button>
+      </div>
+      <nav id="history" class="history"></nav>
+      <div class="sidebar-foot">
+        <div class="account">
+          <span class="account-name" title="{{ email }}">{{ email }}</span>
+          <form method="post" action="{{ url_for('logout') }}">
+            <button type="submit" class="logout">Log out</button>
+          </form>
+        </div>
+        Claude Haiku 4.5 · Amazon Bedrock
+      </div>
+    </aside>
+    <div id="scrim" class="scrim" hidden></div>
+
+    <section class="main">
+      <header class="main-bar">
+        <button id="toggle-sidebar" class="icon-btn" type="button" aria-label="Toggle chat history">☰</button>
+        <span id="chat-title" class="chat-title">New chat</span>
+      </header>
+
+      <div id="scroll" class="scroll">
+        <div id="messages" class="thread" aria-live="polite"></div>
+      </div>
+
+      <div class="composer-wrap">
+        <form id="composer" class="composer">
+          <label for="input" class="sr-only">Message</label>
+          <textarea id="input" rows="1" maxlength="8000" placeholder="Message Bedrock Chat" required></textarea>
+          <button id="send" class="send" type="submit" aria-label="Send message">↑</button>
+        </form>
+        <p class="disclaimer">AI can make mistakes. Check important info.</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const messagesEl = $("messages"), scrollEl = $("scroll"), historyEl = $("history");
+    const form = $("composer"), input = $("input"), sendBtn = $("send");
+    let currentId = null;
+
+    async function api(url, options = {}) {
+      const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...options });
+      if (res.status === 204) return null;
+      if (res.status === 401) { // session expired or logged out in another tab
+        location.href = "/login";
+        throw new Error("Login required");
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    // ---------- Thread ----------
+    function showEmpty() {
+      messagesEl.innerHTML = '<div class="empty"><h1>What can I help with?</h1></div>';
+    }
+
+    function addMessage(role, text) {
+      messagesEl.querySelector(".empty")?.remove();
+      const row = document.createElement("div");
+      row.className = "msg " + role;
+      if (role === "assistant") {
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = "◆";
+        row.appendChild(avatar);
+      }
+      const body = document.createElement("div");
+      body.className = "content";
+      body.textContent = text; // textContent: stored/model text is never rendered as HTML
+      row.appendChild(body);
+      messagesEl.appendChild(row);
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+      return body;
+    }
+
+    // ---------- Sidebar ----------
+    function groupLabel(iso) {
+      const days = (Date.now() - new Date(iso).getTime()) / 86400000;
+      const sameDay = new Date(iso).toDateString() === new Date().toDateString();
+      if (sameDay) return "Today";
+      if (days < 2) return "Yesterday";
+      if (days < 7) return "Previous 7 days";
+      if (days < 30) return "Previous 30 days";
+      return "Older";
+    }
+
+    async function loadHistory() {
+      const conversations = await api("/api/conversations");
+      historyEl.innerHTML = "";
+      let lastLabel = null;
+      for (const c of conversations) {
+        const label = groupLabel(c.updated_at);
+        if (label !== lastLabel) {
+          const h = document.createElement("h3");
+          h.className = "group";
+          h.textContent = label;
+          historyEl.appendChild(h);
+          lastLabel = label;
+        }
+        const item = document.createElement("div");
+        item.className = "item" + (c.id === currentId ? " active" : "");
+
+        const link = document.createElement("a");
+        link.href = "#/c/" + c.id;
+        link.className = "item-link";
+        link.textContent = c.title;
+        link.title = c.title;
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "item-del";
+        del.setAttribute("aria-label", "Delete chat: " + c.title);
+        del.textContent = "🗑";
+        del.addEventListener("click", () => deleteConversation(c.id, c.title));
+
+        item.append(link, del);
+        historyEl.appendChild(item);
+      }
+      if (!conversations.length) {
+        historyEl.innerHTML = '<p class="history-empty">No chats yet</p>';
+      }
+    }
+
+    async function deleteConversation(id, title) {
+      if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+      try {
+        await api("/api/conversations/" + id, { method: "DELETE" });
+        if (id === currentId) location.hash = "";
+        await loadHistory();
+      } catch (err) {
+        alert("Could not delete: " + err.message);
+      }
+    }
+
+    // ---------- Routing (#/c/<id>) ----------
+    async function route() {
+      const match = location.hash.match(/^#\/c\/(\d+)$/);
+      closeSidebar();
+      if (!match) {
+        currentId = null;
+        $("chat-title").textContent = "New chat";
+        showEmpty();
+        await loadHistory();
+        input.focus();
+        return;
+      }
+      const id = Number(match[1]);
+      if (id === currentId) return; // already showing (e.g. hash set after first reply)
+      try {
+        const conv = await api("/api/conversations/" + id);
+        currentId = conv.id;
+        $("chat-title").textContent = conv.title;
+        messagesEl.innerHTML = "";
+        conv.messages.forEach((m) => addMessage(m.role, m.text));
+        if (!conv.messages.length) showEmpty();
+      } catch {
+        location.hash = ""; // unknown or deleted chat: fall back to a new one
+        return;
+      }
+      await loadHistory();
+      input.focus();
+    }
+
+    // ---------- Sending ----------
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text || sendBtn.disabled) return;
+
+      addMessage("user", text);
+      input.value = "";
+      resize();
+      sendBtn.disabled = true;
+      const pending = addMessage("assistant", "Thinking…");
+      pending.classList.add("typing");
+
+      try {
+        const data = await api("/chat", {
+          method: "POST",
+          body: JSON.stringify({ conversation_id: currentId, text }),
+        });
+        pending.textContent = data.reply;
+        pending.classList.remove("typing");
+        if (currentId === null) {
+          currentId = data.conversation_id;
+          location.hash = "#/c/" + currentId;
+        }
+        $("chat-title").textContent = data.title;
+        await loadHistory();
+      } catch (err) {
+        pending.textContent = "Error: " + err.message + " (this message was not saved)";
+        pending.classList.remove("typing");
+        pending.classList.add("error");
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
+    });
+
+    function resize() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 200) + "px";
+    }
+    input.addEventListener("input", resize);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    // ---------- Sidebar toggle ----------
+    const sidebar = $("sidebar"), scrim = $("scrim");
+    function closeSidebar() {
+      document.body.classList.remove("sidebar-open");
+      scrim.hidden = true;
+    }
+    $("toggle-sidebar").addEventListener("click", () => {
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        const open = document.body.classList.toggle("sidebar-open");
+        scrim.hidden = !open;
+      } else {
+        document.body.classList.toggle("sidebar-collapsed");
+      }
+    });
+    scrim.addEventListener("click", closeSidebar);
+
+    $("new-chat").addEventListener("click", () => {
+      if (location.hash) location.hash = "";
+      else route();
+    });
+
+    window.addEventListener("hashchange", route);
+    route();
+  </script>
+</body>
+</html>
